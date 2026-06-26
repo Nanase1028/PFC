@@ -160,7 +160,7 @@ const Bar = ({label,color,value,goal}) => {
 /* ================= APP ================= */
 function App(){
   const [tab,setTab]=useState("home");
-  const date=todayKey();
+  const [selDate,setSelDate]=useState(todayKey());
   const [allMeals,setAllMeals]=useState(()=>LS.get("allMeals",{}));
   const [favorites,setFavorites]=useState(()=>{ const s=LS.get("favorites",null); if(s) return s; LS.set("favorites",DEFAULT_FAVORITES); return DEFAULT_FAVORITES; });
   const [goals,setGoals]=useState(()=>LS.get("goals",{kcal:1250,p:78,f:34,c:156}));
@@ -168,8 +168,8 @@ function App(){
   const [apiKey,setApiKey]=useState(()=>LS.get("apiKey",""));
   const [model,setModel]=useState(()=>LS.get("model","gpt-4o"));
 
-  const meals = allMeals[date] || [];
-  const persistMeals=(next)=>{ const a={...allMeals,[date]:next}; setAllMeals(a); LS.set("allMeals",a); };
+  const meals = allMeals[selDate] || [];
+  const persistMeals=(next)=>{ const a={...allMeals,[selDate]:next}; setAllMeals(a); LS.set("allMeals",a); };
   const addMeal=(m)=>persistMeals([...meals,{id:uid(),...m}]);
   const addMealsToDate=(dk,items)=>{ const a={...allMeals}; const cur=a[dk]?[...a[dk]]:[]; items.forEach(m=>cur.push({id:uid(),...m})); a[dk]=cur; setAllMeals(a); LS.set("allMeals",a); };
   const delMeal=(id)=>persistMeals(meals.filter(x=>x.id!==id));
@@ -186,13 +186,13 @@ function App(){
     <div style={{maxWidth:440,margin:"0 auto",minHeight:"100vh",display:"flex",flexDirection:"column",background:C.bg}}>
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"14px 16px",background:"linear-gradient(90deg,#eff6ff,#dbeafe)",borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:5}}>
         <span style={{fontSize:20}}>🔥</span><span style={{fontWeight:700,fontSize:18,color:C.ink}}>{APP_NAME}</span>
-        <span style={{marginLeft:"auto",fontSize:13,color:C.blue,background:C.blueSoft,padding:"3px 10px",borderRadius:8}}>{fmtDate(date)}</span>
+        <span style={{marginLeft:"auto",fontSize:13,color:C.blue,background:C.blueSoft,padding:"3px 10px",borderRadius:8}}>{fmtDate(selDate)}</span>
       </div>
 
       <div className="scroll" style={{flex:1,overflowY:"auto",padding:16,paddingBottom:90}}>
-        {tab==="home" && <HomeTab meals={meals} goals={goals} onDelete={delMeal}/>}
+        {tab==="home" && <HomeTab meals={meals} goals={goals} onDelete={delMeal} selDate={selDate} setSelDate={setSelDate}/>}
         {tab==="graph" && <GraphTab allMeals={allMeals} weights={weights} goals={goals}/>}
-        {tab==="record" && <RecordTab favorites={favorites} onAdd={addMeal} onRegisterDay={addMealsToDate} apiKey={apiKey} model={model} goto={()=>setTab("register")}/>}
+        {tab==="record" && <RecordTab favorites={favorites} onAdd={addMeal} onRegisterDay={addMealsToDate} selDate={selDate} setSelDate={setSelDate} apiKey={apiKey} model={model} goto={()=>setTab("register")}/>}
         {tab==="register" && <RegisterTab favorites={favorites} goals={goals} weights={weights} apiKey={apiKey} model={model}
             onAddFav={addFav} onDelFav={delFav} onSaveGoals={saveGoals} onSaveWeight={saveWeight} onSaveKey={saveKey} onSaveModel={saveModel}/>}
         {tab==="history" && <HistoryTab allMeals={allMeals}/>}
@@ -220,9 +220,18 @@ function App(){
   );
 }
 
-function HomeTab({meals,goals,onDelete}){
+function DateBar({date,setDate,label}){
+  return <div className="card" style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+    <span style={{fontSize:13,color:C.sub,whiteSpace:"nowrap"}}>{label||"日付"}</span>
+    <input type="date" value={date} max={todayKey()} onChange={e=>setDate(e.target.value||todayKey())} style={{flex:1}}/>
+    {date!==todayKey() && <button onClick={()=>setDate(todayKey())} style={{border:"none",background:C.blueSoft,color:C.blue,borderRadius:8,padding:"9px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>今日</button>}
+  </div>;
+}
+
+function HomeTab({meals,goals,onDelete,selDate,setSelDate}){
   const s=meals.reduce((a,m)=>({kcal:a.kcal+m.kcal,p:a.p+m.p,f:a.f+m.f,c:a.c+m.c}),{kcal:0,p:0,f:0,c:0});
   return <>
+    <DateBar date={selDate} setDate={setSelDate} label="表示する日"/>
     <div className="card" style={{textAlign:"center",marginBottom:16}}>
       <Ring value={s.kcal} goal={goals.kcal}/>
       <div style={{color:C.sub,fontSize:14,margin:"6px 0 16px"}}>目標: {goals.kcal} kcal ({Math.round(s.kcal/goals.kcal*100)||0}%)</div>
@@ -232,7 +241,7 @@ function HomeTab({meals,goals,onDelete}){
         <Bar label="炭水化物" color={C.carb} value={s.c} goal={goals.c}/>
       </div>
     </div>
-    <div style={{fontWeight:700,color:C.ink,margin:"4px 4px 12px"}}>今日の食事</div>
+    <div style={{fontWeight:700,color:C.ink,margin:"4px 4px 12px"}}>{selDate===todayKey()?"今日の食事":fmtDate(selDate)+"の食事"}</div>
     {!meals.length && <div className="card" style={{textAlign:"center",color:C.sub,fontSize:14}}>まだ記録がありません。「記録」から追加できます。</div>}
     {meals.map(m=>(
       <div key={m.id} className="card" style={{marginBottom:10,display:"flex",alignItems:"center",gap:12,padding:14}}>
@@ -299,10 +308,11 @@ function GraphTab({allMeals,weights,goals}){
   </>;
 }
 
-function RecordTab({favorites,onAdd,onRegisterDay,apiKey,model,goto}){
+function RecordTab({favorites,onAdd,onRegisterDay,selDate,setSelDate,apiKey,model,goto}){
   const [mode,setMode]=useState("label");
   const modes=[["manual","手動","pen"],["fav","お気に入り","star"],["paste","貼付け","list"],["label","ラベル","cam"],["ai","AIチャット","bot"]];
   return <>
+    <DateBar date={selDate} setDate={setSelDate} label="記録する日"/>
     <div className="card" style={{display:"flex",gap:4,marginBottom:16,padding:6}}>
       {modes.map(([id,label,icon])=>(
         <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"10px 0",border:"none",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:mode===id?"#fff":"transparent",boxShadow:mode===id?"0 1px 3px rgba(0,0,0,.1)":"none"}}>
@@ -310,9 +320,10 @@ function RecordTab({favorites,onAdd,onRegisterDay,apiKey,model,goto}){
         </button>
       ))}
     </div>
+    {mode!=="paste" && selDate!==todayKey() && <div style={{fontSize:12,color:C.blue,margin:"-6px 4px 12px"}}>※ {fmtDate(selDate)} に登録されます</div>}
     {mode==="manual" && <ManualForm onAdd={onAdd}/>}
     {mode==="fav" && <FavPick favorites={favorites} onAdd={onAdd}/>}
-    {mode==="paste" && <PasteMeals onRegisterDay={onRegisterDay}/>}
+    {mode==="paste" && <PasteMeals onRegisterDay={onRegisterDay} fallbackDate={selDate}/>}
     {mode==="label" && <LabelScan onAdd={onAdd} apiKey={apiKey} model={model} goto={goto}/>}
     {mode==="ai" && <AIChat onAdd={onAdd} apiKey={apiKey} model={model} goto={goto}/>}
   </>;
@@ -441,12 +452,12 @@ function Confirm({result,onAdd,onReset,compact}){
 }
 
 /* 1日分のログを貼り付け → 食事として分類 */
-function parseDayLog(text){
+function parseDayLog(text, fallback){
   const emoji=/^[\u2600-\u27BF\u2B00-\u2BFF\u{1F000}-\u{1FAFF}\uFE0F]/u;
   const lines=(text||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   let timing="昼食", names=[], intotal=false; const meals=[];
   const dm=(text||"").match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
-  let date=todayKey();
+  let date=fallback||todayKey();
   if(dm){ const y=new Date().getFullYear(); date=`${y}-${String(+dm[1]).padStart(2,"0")}-${String(+dm[2]).padStart(2,"0")}`; }
   const isTotal=l=>/合計|摂取量|総カロリー|total/i.test(l);
   const timingOf=l=>{ if(/朝/.test(l))return "朝食"; if(/昼/.test(l))return "昼食"; if(/夜|夕|晩/.test(l))return "夕食"; if(/酒|間食|おやつ|夜食|デザート|おつまみ/.test(l))return "間食"; return null; };
@@ -468,9 +479,9 @@ function parseDayLog(text){
   return {date, meals};
 }
 
-function PasteMeals({onRegisterDay}){
+function PasteMeals({onRegisterDay,fallbackDate}){
   const [text,setText]=useState(""); const [parsed,setParsed]=useState(null); const [msg,setMsg]=useState("");
-  const run=()=>{ const r=parseDayLog(text); setParsed(r); setMsg(""); };
+  const run=()=>{ const r=parseDayLog(text, fallbackDate); setParsed(r); setMsg(""); };
   const commit=()=>{ onRegisterDay(parsed.date, parsed.meals); setMsg(`${parsed.meals.length}件を ${fmtDate(parsed.date)} に登録しました`); setText(""); setParsed(null); };
   const sum=parsed?parsed.meals.reduce((a,m)=>({kcal:a.kcal+m.kcal,p:a.p+m.p,f:a.f+m.f,c:a.c+m.c}),{kcal:0,p:0,f:0,c:0}):null;
   return <div className="card">
@@ -571,7 +582,7 @@ function Backup(){
 }
 
 function RegisterTab({favorites,goals,weights,apiKey,model,onAddFav,onDelFav,onSaveGoals,onSaveWeight,onSaveKey,onSaveModel}){
-  const [g,setG]=useState(goals);const [w,setW]=useState(weights[todayKey()]||"");
+  const [g,setG]=useState(goals);const [wDate,setWDate]=useState(todayKey());const [w,setW]=useState(weights[todayKey()]!=null?weights[todayKey()]:"");
   const [f,setF]=useState({name:"",kcal:"",p:"",f:"",c:""});const [k,setK]=useState(apiKey);const [md,setMd]=useState(model);const [saved,setSaved]=useState(false);const [gsaved,setGsaved]=useState(false);
   return <>
     <div className="card" style={{marginBottom:16}}>
@@ -586,10 +597,15 @@ function RegisterTab({favorites,goals,weights,apiKey,model,onAddFav,onDelFav,onS
     </div>
 
     <div className="card" style={{marginBottom:16}}>
-      <div style={{fontWeight:700,color:C.ink,marginBottom:12}}>今日の体重 (kg)</div>
+      <div style={{fontWeight:700,color:C.ink,marginBottom:12}}>体重 (kg)</div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <span style={{fontSize:13,color:C.sub,whiteSpace:"nowrap"}}>日付</span>
+        <input type="date" value={wDate} max={todayKey()} onChange={e=>{const d=e.target.value||todayKey(); setWDate(d); setW(weights[d]!=null?weights[d]:"");}} style={{flex:1}}/>
+        {wDate!==todayKey() && <button onClick={()=>{setWDate(todayKey()); setW(weights[todayKey()]!=null?weights[todayKey()]:"");}} style={{border:"none",background:C.blueSoft,color:C.blue,borderRadius:8,padding:"9px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>今日</button>}
+      </div>
       <div style={{display:"flex",gap:8}}>
         <input type="number" value={w} onChange={e=>setW(e.target.value)} placeholder="73.8"/>
-        <button onClick={()=>onSaveWeight(todayKey(),+w)} style={{border:"none",background:C.blue,color:"#fff",borderRadius:10,padding:"0 18px",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>保存</button>
+        <button onClick={()=>onSaveWeight(wDate,+w)} style={{border:"none",background:C.blue,color:"#fff",borderRadius:10,padding:"0 18px",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>保存</button>
       </div>
     </div>
 
